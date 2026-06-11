@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ArrowLeft, Mic, Square, Loader2, Sparkles, Check } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
+import { AudioRecorder, sendAudioForProcessing } from "@/lib/audioRecorder";
 
 const ANIMAL_THEMES: Record<string, { color: string; buttonColor: string; glow: string }> = {
   dog:    { color: "bg-gradient-to-br from-[#0f172a] to-[#0c4a6e]", buttonColor: "bg-cyan-500",    glow: "shadow-cyan-500/50" },
@@ -58,7 +59,7 @@ const MOCK_RESPONSES: Record<string, { emotion: string; message: string }[]> = {
   ],
 };
 
-export default function TranslatePage() {
+function TranslateContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const animalParam = searchParams.get("animal") || "dog";
@@ -66,12 +67,14 @@ export default function TranslatePage() {
   const theme = ANIMAL_THEMES[animal];
   const emoji = ANIMAL_EMOJIS[animal];
 
+  const audioRecorderRef = useRef<AudioRecorder | null>(null);
   const [pets, setPets] = useState<any[]>([]);
   const [selectedPetId, setSelectedPetId] = useState<string>("");
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<{ emotion: string; message: string } | null>(null);
   const [saveStatus, setSaveStatus] = useState<string>("");
+  const [error, setError] = useState<string>("");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -97,49 +100,58 @@ export default function TranslatePage() {
       .catch((err) => console.error("Error loading pets", err));
   }, [animal, router]);
 
-  const toggleListening = () => {
+  const toggleListening = async () => {
     if (isListening) {
+      // Stop recording
       setIsListening(false);
       setIsProcessing(true);
-      
-      setTimeout(async () => {
-        setIsProcessing(false);
-        const responses = MOCK_RESPONSES[animal] || MOCK_RESPONSES["dog"];
-        const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-        setResult(randomResponse);
+      setError("");
 
-        // Save translation to DB dynamically
-        const token = localStorage.getItem("token");
-        if (token) {
-          try {
-            setSaveStatus("Saving...");
-            const saveRes = await fetch("/api/translations", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                petId: selectedPetId || undefined,
-                animal,
-                emotion: randomResponse.emotion,
-                message: randomResponse.message,
-              }),
-            });
-            if (saveRes.ok) {
-              setSaveStatus("Saved to history!");
-            } else {
-              setSaveStatus("Could not save translation.");
-            }
-          } catch (e) {
-            setSaveStatus("Network error saving translation.");
-          }
+      try {
+        if (!audioRecorderRef.current) {
+          throw new Error("Audio recorder not initialized");
         }
-      }, 2500);
+
+        // Stop recording and get audio blob with metrics
+        const { audioBlob, volume, frequency } = await audioRecorderRef.current.stopRecording();
+        
+        // Send audio for processing
+        const analysisResult = await sendAudioForProcessing(
+          audioBlob,
+          animal,
+          selectedPetId,
+          { volume, frequency }
+        );
+
+        setResult({
+          emotion: analysisResult.emotion,
+          message: analysisResult.message,
+        });
+        setSaveStatus("✓ Detected and saved!");
+      } catch (err: any) {
+        console.error("Error processing audio:", err);
+        setError(err.message || "Failed to process audio. Please try again.");
+        setIsProcessing(false);
+      } finally {
+        setIsProcessing(false);
+      }
     } else {
-      setResult(null);
-      setSaveStatus("");
-      setIsListening(true);
+      // Start recording
+      try {
+        setError("");
+        setResult(null);
+        setSaveStatus("");
+        
+        if (!audioRecorderRef.current) {
+          audioRecorderRef.current = new AudioRecorder();
+        }
+
+        await audioRecorderRef.current.startRecording();
+        setIsListening(true);
+      } catch (err: any) {
+        console.error("Error starting recording:", err);
+        setError(err.message || "Failed to access microphone. Please check permissions.");
+      }
     }
   };
 
@@ -148,6 +160,8 @@ export default function TranslatePage() {
     setIsProcessing(false);
     setResult(null);
     setSaveStatus("");
+    setError("");
+    audioRecorderRef.current = null;
   };
 
   const selectedPet = pets.find((p) => p._id === selectedPetId);
@@ -244,7 +258,25 @@ export default function TranslatePage() {
         )}
 
         <AnimatePresence mode="wait">
-          {!result && !isProcessing && (
+          {error && (
+            <motion.div 
+              key="error" 
+              initial={{ opacity: 0, y: -10 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-6 p-4 rounded-xl bg-red-500/20 border border-red-500/50 text-red-200 text-sm"
+            >
+              <p className="font-semibold">Error: {error}</p>
+              <button
+                onClick={() => setError("")}
+                className="mt-2 text-red-300 hover:text-red-100 text-xs underline"
+              >
+                Dismiss
+              </button>
+            </motion.div>
+          )}
+
+          {!result && !isProcessing && !error && (
             <motion.div 
               key="ready" 
               initial={{ opacity: 0, y: 10 }} 
@@ -426,5 +458,13 @@ export default function TranslatePage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function TranslatePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">Loading...</div>}>
+      <TranslateContent />
+    </Suspense>
   );
 }

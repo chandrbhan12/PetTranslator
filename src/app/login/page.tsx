@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { PawPrint, Mail, Lock, User, Eye, EyeOff, ArrowLeft, Sparkles, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function LoginPage() {
+function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const animal = searchParams.get("animal") || "dog";
@@ -268,5 +268,13 @@ export default function LoginPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#050505] text-white flex flex-col font-sans overflow-hidden items-center justify-center">Loading...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }

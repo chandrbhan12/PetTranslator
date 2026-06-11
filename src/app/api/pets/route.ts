@@ -6,11 +6,15 @@ import jwt from "jsonwebtoken";
 // Helper function to verify user token
 async function verifyUser(req: NextRequest) {
   const token = req.headers.get("authorization")?.replace("Bearer ", "");
-  if (!token) return null;
+  if (!token) {
+    console.log("No token provided");
+    return null;
+  }
   try {
     const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
     return decoded.userId;
   } catch (error) {
+    console.log("JWT Verification Error:", error, "Token:", token);
     return null;
   }
 }

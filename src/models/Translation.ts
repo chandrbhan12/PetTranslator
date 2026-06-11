@@ -6,6 +6,8 @@ export interface ITranslation extends Document {
   animal: string;
   emotion: string;
   message: string;
+  confidence?: number;
+  audioData?: string;
   createdAt: Date;
 }
 
@@ -32,6 +34,16 @@ const TranslationSchema = new Schema<ITranslation>({
   message: {
     type: String,
     required: true,
+  },
+  confidence: {
+    type: Number,
+    required: false,
+    min: 0,
+    max: 1,
+  },
+  audioData: {
+    type: String,
+    required: false,
   },
   createdAt: {
     type: Date,
