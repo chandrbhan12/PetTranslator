@@ -4,9 +4,9 @@ import OpenAI from "openai";
 import dbConnect from "@/lib/mongodb";
 import Translation from "@/models/Translation";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = process.env.OPENAI_API_KEY 
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
 // Audio analysis patterns and characteristics
 const ANIMAL_SOUND_PATTERNS: Record<string, any> = {
@@ -73,6 +73,8 @@ async function analyzeAudioWithWhisper(audioBuffer: Buffer): Promise<string> {
     // Create a File-like object for OpenAI
     const uint8Array = new Uint8Array(audioBuffer);
     const audioFile = new File([uint8Array], "audio.webm", { type: "audio/webm" });
+    
+    if (!openai) return "";
     
     const transcription = await openai.audio.transcriptions.create({
       file: audioFile,
