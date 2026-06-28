@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (error: any) {
+    console.error("[signup] ERROR:", error?.message, error?.stack);
     return NextResponse.json(
       { error: error.message || "Something went wrong" },
       { status: 500 }
